@@ -30,7 +30,8 @@ class Focus(bpy.types.Operator):
             column.prop(self, "ignore_mirrors", toggle=True)
 
         # only show tool props when initializing local view, this prevents switching modes and settings while in local view
-        elif self.method == 'LOCAL_VIEW' and self.show_tool_props:
+        # elif self.method == 'LOCAL_VIEW' and self.show_tool_props:
+        elif self.method == 'LOCAL_VIEW':
             row = column.row()
             row.label(text="Levels")
             row.prop(self, "levels", expand=True)
@@ -53,22 +54,30 @@ class Focus(bpy.types.Operator):
     def view_selected(self, context):
         mirrors = []
 
+        nothing_selected = False
+
         if context.mode == 'OBJECT':
             sel = context.selected_objects
+
+            if not sel:
+                bpy.ops.view3d.view_all('INVOKE_DEFAULT') if get_prefs().focus_view_transition else bpy.ops.view3d.view_all()
+                return
+
             if self.ignore_mirrors:
                 mirrors = [mod for obj in sel for mod in obj.modifiers if mod.type == 'MIRROR' and mod.show_viewport]
 
                 for mod in mirrors:
                     mod.show_viewport = False
 
-        if get_prefs().focus_view_transition:
-            bpy.ops.view3d.view_selected('INVOKE_DEFAULT')
 
-        else:
-            bpy.ops.view3d.view_selected()
+        bpy.ops.view3d.view_selected('INVOKE_DEFAULT') if get_prefs().focus_view_transition else bpy.ops.view3d.view_selected()
 
         for mod in mirrors:
             mod.show_viewport = True
+
+        if nothing_selected:
+            for obj in context.visible_objects:
+                obj.select_set(False)
 
     def local_view(self, context, debug=False):
         def focus(context, view, sel, history, init=False):
@@ -106,8 +115,14 @@ class Focus(bpy.types.Operator):
                             entry.obj = obj
                             entry.name = obj.name
 
+                # selection event to force a HUD drawing/handler update
+                sel[0].select_set(True)
+
         def unfocus(context, view, history):
             last_epoch = history[-1]
+
+            # get obj used for selection event to force a HUD drawing/handler update
+            obj = last_epoch.objects[0].obj
 
             # de-inititalize
             if len(history) == 1:
@@ -123,13 +138,15 @@ class Focus(bpy.types.Operator):
                     if mod.type == "MIRROR":
                         mod.show_viewport = True
 
-
             # delete the last epoch
             idx = history.keys().index(last_epoch.name)
             history.remove(idx)
 
+            # selection event to force a HUD drawing/handler update
+            obj.select_set(False)
+
         view = context.space_data
-        self.show_tool_props = False
+        # self.show_tool_props = False
 
         sel = context.selected_objects
         vis = context.visible_objects
@@ -147,8 +164,8 @@ class Focus(bpy.types.Operator):
                     mod.show_viewport = True if view.local_view else False
 
 
-            if not view.local_view:
-                self.show_tool_props = True
+            # if not view.local_view:
+                # self.show_tool_props = True
 
             bpy.ops.view3d.localview(frame_selected=False)
 
@@ -161,7 +178,7 @@ class Focus(bpy.types.Operator):
             if view.local_view:
 
                 # go deeper
-                if context.selected_objects and not (len(vis) == 1 and vis == sel):
+                if context.selected_objects and not vis == sel:
                     focus(context, view, sel, history)
 
                 # go higher
@@ -180,7 +197,7 @@ class Focus(bpy.types.Operator):
                 if history:
                     history.clear()
 
-                self.show_tool_props = True
+                # self.show_tool_props = True
                 focus(context, view, sel, history, init=True)
 
             if debug:

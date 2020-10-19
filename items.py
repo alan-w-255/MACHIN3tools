@@ -31,10 +31,40 @@ align_direction_items = [('LEFT', 'Left', ''),
                          ('HORIZONTAL', 'Horizontal', ''),
                          ('VERTICAL', 'Vertical', '')]
 
-align_axis_mapping_dict = {'X': 0, 'Y': 1, 'Z': 2}
+align_orientation_items = [('LOCAL', 'Local', ''),
+                           ('WORLD', 'World', ''),
+                           ('CURSOR', 'Cursor', '')]
+
+cleanup_select_items = [("NON-MANIFOLD", "Non-Manifold", ""),
+                        ("TRIS", "Tris", ""),
+                        ("NGONS", "Ngons", "")]
+
+driver_limit_items = [('NONE', 'None', ''),
+                      ('START', 'Start', ''),
+                      ('END', 'End', ''),
+                      ('BOTH', 'Both', '')]
+
+driver_transform_items = [('LOCATION', 'Location', ''),
+                          ('ROTATION_EULER', 'Rotation', '')]
+
+driver_space_items = [('AUTO', 'Auto', 'Choose Local or World space based on whether driver object is parented'),
+                      ('LOCAL_SPACE', 'Local', ''),
+                      ('WORLD_SPACE', 'World', '')]
+
+axis_mapping_dict = {'X': 0, 'Y': 1, 'Z': 2}
 
 uv_align_axis_mapping_dict = {'U': 0, 'V': 1}
 
+bridge_interpolation_items = [('LINEAR', 'Linear', ''),
+                              ('PATH', 'Path', ''),
+                              ('SURFACE', 'Surface', '')]
+
+view_axis_items = [("FRONT", "Front", ""),
+                   ("BACK", "Back", ""),
+                   ("LEFT", "Left", ""),
+                   ("RIGHT", "Right", ""),
+                   ("TOP", "Top", ""),
+                   ("BOTTOM", "Bottom", "")]
 
 # PIES
 
@@ -48,3 +78,8 @@ render_engine_items = [('BLENDER_EEVEE', 'Eevee', ''),
 
 cycles_device_items = [('CPU', 'CPU', ''),
                        ('GPU', 'GPU', '')]
+
+
+bc_orientation_items = [('LOCAL', 'Local', ''),
+                        ('NEAREST', 'Nearest', ''),
+                        ('LONGEST', 'Longest', '')]

@@ -47,7 +47,7 @@ def get_addon(addon, debug=False):
 
 def get_addon_prefs(addon):
     _, foldername, _, _ = get_addon(addon)
-    return bpy.context.preferences.addons.get(foldername)
+    return bpy.context.preferences.addons.get(foldername).preferences
 
 
 # CLASS REGISTRATION
@@ -380,6 +380,12 @@ def get_tools():
     classlists, keylists, count = get_filebrowser(classlists, keylists, count)
 
 
+    # SMART DRIVE
+    classlists, keylists, count = get_smart_drive(classlists, keylists, count)
+
+    # UNITY TOOLS
+    classlists, keylists, count = get_unity(classlists, keylists, count)
+
     # CUSTOMIZE
     classlists, keylists, count = get_customize(classlists, keylists, count)
 
@@ -426,6 +432,11 @@ def get_pie_menus():
     classlists, keylists, count = get_transform_pie(classlists, keylists, count)
 
 
+    # SNAP
+
+    classlists, keylists, count = get_snapping_pie(classlists, keylists, count)
+
+
     # COLLECTIONS
 
     classlists, keylists, count = get_collections_pie(classlists, keylists, count)
@@ -434,6 +445,11 @@ def get_pie_menus():
     # WORKSPACE
 
     classlists, keylists, count = get_workspace_pie(classlists, keylists, count)
+
+
+    # TOOLS
+
+    classlists, keylists, count = get_tools_pie(classlists, keylists, count)
 
     return classlists, keylists, count
 
@@ -563,6 +579,22 @@ def get_filebrowser(classlists=[], keylists=[], count=0):
     return classlists, keylists, count
 
 
+def get_smart_drive(classlists=[], keylists=[], count=0):
+    if get_prefs().activate_smart_drive:
+        classlists.append(classesdict["SMART_DRIVE"])
+        count +=1
+
+    return classlists, keylists, count
+
+
+def get_unity(classlists=[], keylists=[], count=0):
+    if get_prefs().activate_unity:
+        classlists.append(classesdict["UNITY"])
+        count +=1
+
+    return classlists, keylists, count
+
+
 def get_customize(classlists=[], keylists=[], count=0):
     if get_prefs().activate_customize:
         classlists.append(classesdict["CUSTOMIZE"])
@@ -642,6 +674,15 @@ def get_transform_pie(classlists=[], keylists=[], count=0):
     return classlists, keylists, count
 
 
+def get_snapping_pie(classlists=[], keylists=[], count=0):
+    if get_prefs().activate_snapping_pie:
+        classlists.append(classesdict["SNAPPING_PIE"])
+        keylists.append(keysdict["SNAPPING_PIE"])
+        count += 1
+
+    return classlists, keylists, count
+
+
 def get_collections_pie(classlists=[], keylists=[], count=0):
     if get_prefs().activate_collections_pie:
         classlists.append(classesdict["COLLECTIONS_PIE"])
@@ -655,6 +696,15 @@ def get_workspace_pie(classlists=[], keylists=[], count=0):
     if get_prefs().activate_workspace_pie:
         classlists.append(classesdict["WORKSPACE_PIE"])
         keylists.append(keysdict["WORKSPACE_PIE"])
+        count += 1
+
+    return classlists, keylists, count
+
+
+def get_tools_pie(classlists=[], keylists=[], count=0):
+    if get_prefs().activate_tools_pie:
+        classlists.append(classesdict["TOOLS_PIE"])
+        keylists.append(keysdict["TOOLS_PIE"])
         count += 1
 
     return classlists, keylists, count

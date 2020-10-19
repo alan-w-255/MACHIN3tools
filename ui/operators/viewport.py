@@ -1,29 +1,150 @@
 import bpy
-from bpy.props import EnumProperty, BoolProperty
-axisitems = [("FRONT", "Front", ""),
-             ("BACK", "Back", ""),
-             ("LEFT", "Left", ""),
-             ("RIGHT", "Right", ""),
-             ("TOP", "Top", ""),
-             ("BOTTOM", "Bottom", "")]
+import bmesh
+from bpy.props import EnumProperty, BoolProperty, StringProperty
+from mathutils import Matrix, Euler, Quaternion
+from math import radians
+from ... utils.view import reset_viewport
+from ... utils.math import average_locations
+from ... items import view_axis_items
 
 
 class ViewAxis(bpy.types.Operator):
     bl_idname = "machin3.view_axis"
     bl_label = "View Axis"
-    bl_description = "Click: Align View\nALT + Click: Align View to Active"
     bl_options = {'REGISTER'}
 
-    axis: EnumProperty(name="Axis", items=axisitems, default="FRONT")
+    axis: EnumProperty(name="Axis", items=view_axis_items, default="FRONT")
+
+    @classmethod
+    def description(cls, context, properties):
+        m3 = context.scene.M3
+
+        if context.mode == 'OBJECT':
+            selection = 'Object'
+        elif context.mode == 'EDIT_MESH':
+            selection = 'Verts' if tuple(bpy.context.scene.tool_settings.mesh_select_mode) == (True, False, False) else 'Edges' if tuple(bpy.context.scene.tool_settings.mesh_select_mode) == (False, True, False) else 'Faces' if tuple(bpy.context.scene.tool_settings.mesh_select_mode) == (False, False, True) else 'Elements'
+        else:
+            selection = 'Elements'
+
+        if m3.custom_views_local:
+            return "Align Custom View to Active Object\nALT: Align View to Active %s" % (selection)
+        if m3.custom_views_cursor:
+            return "Align Custom View to Cursor\nALT: Align View to Active %s" % (selection)
+        else:
+            return "Align View to World\nALT: Align View to Active to Active %s" % (selection)
+
+    @classmethod
+    def poll(cls, context):
+        return context.space_data.type == 'VIEW_3D'
 
     def invoke(self, context, event):
+        m3 = context.scene.M3
+        r3d = context.space_data.region_3d
 
+        # align to the active selection
         if event.alt:
             bpy.ops.view3d.view_axis(type=self.axis, align_active=True)
+
+            # always use ortho for aligned views like this
+            r3d.view_perspective = 'ORTHO'
+
+            # setting these props is required for prefs.inputs.use_auto_perspective to work
+            r3d.is_orthographic_side_view = True
+            r3d.is_perspective = True
+
+        # align custom view in object or cursor space
+        elif m3.custom_views_local or m3.custom_views_cursor:
+            mx = context.scene.cursor.matrix if m3.custom_views_cursor else context.active_object.matrix_world if m3.custom_views_local and context.active_object else None
+
+            # fallback, when there is no active object: turn of custom local views and align in world space
+            if not mx:
+                context.scene.M3.custom_views_local = False
+                bpy.ops.view3d.view_axis(type=self.axis, align_active=False)
+                return {'FINISHED'}
+
+            loc, rot, _ = mx.decompose()
+            rot = self.create_view_rotation(rot, self.axis)
+
+            # in edit mesh mode, also change the viewport location if anything is selected
+            if context.mode == 'EDIT_MESH':
+                bm = bmesh.from_edit_mesh(context.active_object.data)
+
+                verts = [v for v in bm.verts if v.select]
+
+                if verts:
+                    loc = context.active_object.matrix_world @ average_locations([v.co for v in verts])
+
+            r3d.view_location = loc
+            r3d.view_rotation = rot
+
+            r3d.view_perspective = 'ORTHO'
+
+            # setting these props is required for prefs.inputs.use_auto_perspective to work
+            r3d.is_orthographic_side_view = True
+            r3d.is_perspective = True
+
+
+        # align in world space
         else:
             bpy.ops.view3d.view_axis(type=self.axis, align_active=False)
 
         return {'FINISHED'}
+
+    def create_view_rotation(self, rot, axis):
+        '''
+        rotate passed in quaternion based on view axis
+        TOP is unchanged
+        '''
+
+        if self.axis == 'FRONT':
+            rmx = rot.to_matrix()
+            rotated = rot.to_matrix()
+
+            rotated.col[1] = rmx.col[2]
+            rotated.col[2] = -rmx.col[1]
+
+            rot = rotated.to_quaternion()
+
+        elif self.axis == 'BACK':
+            rmx = rot.to_matrix()
+            rotated = rot.to_matrix()
+
+            rotated.col[0] = -rmx.col[0]
+            rotated.col[1] = rmx.col[2]
+            rotated.col[2] = rmx.col[1]
+
+            rot = rotated.to_quaternion()
+
+        elif self.axis == 'RIGHT':
+            rmx = rot.to_matrix()
+            rotated = rot.to_matrix()
+
+            rotated.col[0] = rmx.col[1]
+            rotated.col[1] = rmx.col[2]
+            rotated.col[2] = rmx.col[0]
+
+            rot = rotated.to_quaternion()
+
+        elif self.axis == 'LEFT':
+            rmx = rot.to_matrix()
+            rotated = rot.to_matrix()
+
+            rotated.col[0] = -rmx.col[1]
+            rotated.col[1] = rmx.col[2]
+            rotated.col[2] = -rmx.col[0]
+
+            rot = rotated.to_quaternion()
+
+        elif self.axis == 'BOTTOM':
+            rmx = rot.to_matrix()
+            rotated = rot.to_matrix()
+
+            rotated.col[1] = -rmx.col[1]
+            rotated.col[2] = -rmx.col[2]
+
+            rot = rotated.to_quaternion()
+
+        return rot
 
 
 class MakeCamActive(bpy.types.Operator):
@@ -49,6 +170,10 @@ class SmartViewCam(bpy.types.Operator):
     bl_label = "Smart View Cam"
     bl_description = "Default: View Active Scene Camera\nNo Camera in the Scene: Create Camera from View\nCamera Selected: Make Selected Camera active and view it.\nAlt + Click: Create Camera from current View."
     bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
 
     def invoke(self, context, event):
         cams = [obj for obj in context.scene.objects if obj.type == "CAMERA"]
@@ -149,7 +274,6 @@ class ToggleViewPerspOrtho(bpy.types.Operator):
     bl_description = "Toggle Viewport Perspective/Ortho"
     bl_options = {'REGISTER', 'UNDO'}
 
-
     def execute(self, context):
         global toggledprefs
 
@@ -165,5 +289,38 @@ class ToggleViewPerspOrtho(bpy.types.Operator):
             prefs.use_auto_perspective = True
 
         bpy.ops.view3d.view_persportho()
+
+        return {'FINISHED'}
+
+
+class ToggleOrbitMethod(bpy.types.Operator):
+    bl_idname = "machin3.toggle_orbit_method"
+    bl_label = "MACHIN3: Toggle Orbit Method"
+    bl_description = "Toggle Orbit Method"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    method: StringProperty(name='Orbit Method', default='TURNTABLE')
+
+    def execute(self, context):
+        context.preferences.inputs.view_rotate_method = self.method
+
+        return {'FINISHED'}
+
+
+class ResetViewport(bpy.types.Operator):
+    bl_idname = "machin3.reset_viewport"
+    bl_label = "MACHIN3: Reset Viewport"
+    bl_description = "Perfectly align the viewport with the Y axis, looking into Y+"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.space_data.type == 'VIEW_3D'
+
+    def execute(self, context):
+        context.space_data.region_3d.is_orthographic_side_view = False
+        context.space_data.region_3d.view_perspective = 'PERSP'
+
+        reset_viewport(context)
 
         return {'FINISHED'}

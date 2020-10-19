@@ -1,8 +1,12 @@
 import bpy
-from bpy.props import StringProperty, IntProperty, BoolProperty, CollectionProperty, PointerProperty, EnumProperty, FloatProperty
+from bpy.props import StringProperty, IntProperty, BoolProperty, CollectionProperty, PointerProperty, EnumProperty, FloatProperty, FloatVectorProperty
+from mathutils import Matrix
 import bmesh
+from . utils.math import flatten_matrix
 from . utils.world import get_world_output
-from . items import eevee_preset_items, align_mode_items, render_engine_items, cycles_device_items
+from . utils.system import abspath
+from . utils.registration import get_prefs, get_addon_prefs
+from . items import eevee_preset_items, align_mode_items, render_engine_items, cycles_device_items, driver_limit_items, axis_items, driver_transform_items, driver_space_items, bc_orientation_items
 
 
 # COLLECTIONS
@@ -234,6 +238,61 @@ class M3SceneProperties(bpy.types.PropertyGroup):
 
         context.scene.cycles.device = self.cycles_device
 
+    def update_custom_views_local(self, context):
+        if self.avoid_update:
+            self.avoid_update = False
+            return
+
+        # only one custom view can be active at a time
+        if self.custom_views_local and self.custom_views_cursor:
+            self.avoid_update = True
+            self.custom_views_cursor = False
+
+        # toggle orhto grid
+        context.space_data.overlay.show_ortho_grid = not self.custom_views_local
+
+        # toggle trackball orbiting
+        if get_prefs().custom_views_use_trackball:
+            context.preferences.inputs.view_rotate_method = 'TRACKBALL' if self.custom_views_local else 'TURNTABLE'
+
+        # set transform preset
+        if get_prefs().activate_transform_pie and get_prefs().custom_views_set_transform_preset:
+            bpy.ops.machin3.set_transform_preset(pivot='MEDIAN_POINT', orientation='LOCAL' if self.custom_views_local else 'GLOBAL')
+
+    def update_custom_views_cursor(self, context):
+        if self.avoid_update:
+            self.avoid_update = False
+            return
+
+        # only one custom view can be active at a tim
+        if self.custom_views_cursor and self.custom_views_local:
+            self.avoid_update = True
+            self.custom_views_local = False
+
+        # toggle ortho grid
+        context.space_data.overlay.show_ortho_grid = not self.custom_views_cursor
+
+        # toggle trackball orbiting
+        if get_prefs().custom_views_use_trackball:
+            context.preferences.inputs.view_rotate_method = 'TRACKBALL' if self.custom_views_cursor else 'TURNTABLE'
+
+        # set transform preset
+        if get_prefs().activate_transform_pie and get_prefs().custom_views_set_transform_preset:
+            bpy.ops.machin3.set_transform_preset(pivot='CURSOR' if self.custom_views_cursor else 'MEDIAN_POINT', orientation='CURSOR' if self.custom_views_cursor else 'GLOBAL')
+
+
+    def update_bcorientation(self, context):
+        bcprefs = get_addon_prefs('BoxCutter')
+
+        if self.bcorientation == 'LOCAL':
+            bcprefs.behavior.orient_method = 'LOCAL'
+        elif self.bcorientation == 'NEAREST':
+            bcprefs.behavior.orient_method = 'NEAREST'
+        elif self.bcorientation == 'LONGEST':
+            bcprefs.behavior.orient_method = 'TANGENT'
+
+
+    # SHADING
 
     eevee_preset: EnumProperty(name="Eevee Preset", description="Eevee Quality Presets", items=eevee_preset_items, default='NONE', update=update_eevee_preset)
     eevee_gtao_factor: FloatProperty(name="Factor", default=1, min=0, step=0.1, update=update_eevee_gtao_factor)
@@ -245,6 +304,74 @@ class M3SceneProperties(bpy.types.PropertyGroup):
     object_axes_size: FloatProperty(name="Object Axes Size", default=0.3, min=0)
     object_axes_alpha: FloatProperty(name="Object Axes Alpha", default=0.75, min=0, max=1)
 
+
+    # VIEW
+
+    custom_views_local: BoolProperty(name="Custom Local Views", description="Use Custom Views, based on the active object's orientation", default=False, update=update_custom_views_local)
+    custom_views_cursor: BoolProperty(name="Custom Cursor Views", description="Use Custom Views, based on the cursor's orientation", default=False, update=update_custom_views_cursor)
+
+
+    # ALIGN
+
     align_mode: EnumProperty(name="Align Mode", items=align_mode_items, default="VIEW")
+
+
+    # SMART DRIVE
+
+    show_smart_drive: BoolProperty(name="Show Smart Drive")
+
+    driver_start: FloatProperty(name="Driver Start Value", precision=3)
+    driver_end: FloatProperty(name="Driver End Value", precision=3)
+    driver_axis: EnumProperty(name="Driver Axis", items=axis_items, default='X')
+    driver_transform: EnumProperty(name="Driver Transform", items=driver_transform_items, default='LOCATION')
+    driver_space: EnumProperty(name="Driver Space", items=driver_space_items, default='AUTO')
+
+    driven_start: FloatProperty(name="Driven Start Value", precision=3)
+    driven_end: FloatProperty(name="Driven End Value", precision=3)
+    driven_axis: EnumProperty(name="Driven Axis", items=axis_items, default='X')
+    driven_transform: EnumProperty(name="Driven Transform", items=driver_transform_items, default='LOCATION')
+    driven_limit: EnumProperty(name="Driven Lmit", items=driver_limit_items, default='BOTH')
+
+
+    # UNITY
+
+    def update_unity_export_path(self, context):
+        if self.avoid_update:
+            self.avoid_update = False
+            return
+
+        path = self.unity_export_path
+
+        if path:
+            if not path.endswith('.fbx'):
+                path += '.fbx'
+
+            self.avoid_update = True
+            self.unity_export_path = abspath(path)
+
+    show_unity: BoolProperty(name="Show Unity")
+
+    unity_export: BoolProperty(name="Export to Unity", description="Enable to do the actual FBX export\nLeave it off to only prepare the Model")
+    unity_export_path: StringProperty(name="Unity Export Path", subtype='FILE_PATH', update=update_unity_export_path)
+    unity_triangulate: BoolProperty(name="Triangulate before exporting", description="Add Triangulate Modifier to the end of every object's stack", default=False)
+
+
+    # BoxCutter
+
+    bcorientation: EnumProperty(name="BoxCutter Orientation", items=bc_orientation_items, default='LOCAL', update=update_bcorientation)
+
+    # hidden
+
+    avoid_update: BoolProperty()
+
+
+class M3ObjectProperties(bpy.types.PropertyGroup):
+    unity_exported: BoolProperty(name="Exported to Unity")
+
+    pre_unity_export_mx: FloatVectorProperty(name="Pre-Unity-Export Matrix", subtype="MATRIX", size=16, default=flatten_matrix(Matrix()))
+    pre_unity_export_mesh: PointerProperty(name="Pre-Unity-Export Mesh", type=bpy.types.Mesh)
+    pre_unity_export_armature: PointerProperty(name="Pre-Unity-Export Armature", type=bpy.types.Armature)
+
+    # hidden
 
     avoid_update: BoolProperty()

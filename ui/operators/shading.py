@@ -1,5 +1,9 @@
 import bpy
+from bpy.props import IntProperty
+from math import degrees, radians
+from mathutils import Matrix
 from ... utils.registration import get_prefs
+
 
 solid_show_overlays = True
 material_show_overlays = False
@@ -172,6 +176,9 @@ class ToggleCurvature(bpy.types.Operator):
         return {'FINISHED'}
 
 
+matcap1_color_type = None
+
+
 class MatcapSwitch(bpy.types.Operator):
     bl_idname = "machin3.matcap_switch"
     bl_label = "Matcap Switch"
@@ -188,14 +195,60 @@ class MatcapSwitch(bpy.types.Operator):
         matcap1 = get_prefs().switchmatcap1
         matcap2 = get_prefs().switchmatcap2
 
+        force_single = get_prefs().matcap2_force_single
+        global matcap1_color_type
+
         if matcap1 and matcap2 and "NOT FOUND" not in [matcap1, matcap2]:
             if shading.studio_light == matcap1:
                 shading.studio_light = matcap2
 
+                if force_single and shading.color_type != 'SINGLE':
+                    matcap1_color_type = shading.color_type
+                    shading.color_type = 'SINGLE'
+
             elif shading.studio_light == matcap2:
                 shading.studio_light = matcap1
 
+                if force_single and matcap1_color_type:
+                    shading.color_type = matcap1_color_type
+                    matcap1_color_type = None
+
             else:
                 shading.studio_light = matcap1
+
+        return {'FINISHED'}
+
+
+class RotateStudioLight(bpy.types.Operator):
+    bl_idname = "machin3.rotate_studiolight"
+    bl_label = "MACHIN3: Rotate Studiolight"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    angle: IntProperty(name="Angle")
+
+    @classmethod
+    def description(cls, context, properties):
+        return "Rotate Studio Light by %d degrees\nALT: Rotate visible lights too" % (int(properties.angle))
+
+    def invoke(self, context, event):
+        current = degrees(context.space_data.shading.studiolight_rotate_z)
+        new = (current + self.angle)
+
+        # deal with angles beyond 360
+        if new > 360:
+            new = new % 360
+
+        # shift angle into blender's -180 to 180 range
+        if new > 180:
+            new = -180 + (new - 180)
+
+        context.space_data.shading.studiolight_rotate_z = radians(new)
+
+        if event.alt:
+            rmx = Matrix.Rotation(radians(self.angle), 4, 'Z')
+            lights = [obj for obj in context.visible_objects if obj.type == 'LIGHT']
+
+            for light in lights:
+                light.matrix_world = rmx @ light.matrix_world
 
         return {'FINISHED'}

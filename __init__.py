@@ -1,7 +1,7 @@
 bl_info = {
     "name": "MACHIN3tools",
     "author": "MACHIN3",
-    "version": (0, 3, 15),
+    "version": (0, 4, 1),
     "blender": (2, 83, 0),
     "location": "",
     "description": "Streamlining Blender 2.80 and beyond.",
@@ -11,11 +11,11 @@ bl_info = {
 
 
 def reload_modules(name):
-    """
+    '''
     This makes sure all modules are reloaded from new files, when the addon is removed and a new version is installed in the same session,
     or when Blender's 'Reload Scripts' operator is run manually.
     It's important, that utils modules are reloaded first, as operators and menus import from them
-    """
+    '''
 
     import os
     import importlib
@@ -64,11 +64,11 @@ if 'bpy' in locals():
 
 import bpy
 from bpy.props import PointerProperty
-from . properties import M3SceneProperties
+from . properties import M3SceneProperties, M3ObjectProperties
 from . utils.registration import get_core, get_tools, get_pie_menus, get_menus
 from . utils.registration import register_classes, unregister_classes, register_keymaps, unregister_keymaps, register_icons, unregister_icons, add_object_context_menu, remove_object_context_menu
 from . utils.registration import add_object_buttons
-from . handlers import update_object_axes_drawing
+from . handlers import update_object_axes_drawing, focus_HUD
 
 
 # TODO: support translation, see https://blendermarket.com/inbox/conversations/20371
@@ -85,6 +85,7 @@ def register():
     # PROPERTIES
 
     bpy.types.Scene.M3 = PointerProperty(type=M3SceneProperties)
+    bpy.types.Object.M3 = PointerProperty(type=M3ObjectProperties)
 
     # TOOLS, PIE MENUS, KEYMAPS, MENUS
 
@@ -111,6 +112,8 @@ def register():
     bpy.app.handlers.redo_pre.append(update_object_axes_drawing)
     bpy.app.handlers.load_pre.append(update_object_axes_drawing)
 
+    bpy.app.handlers.depsgraph_update_post.append(focus_HUD)
+
 
     # REGISTRATION OUTPUT
 
@@ -126,6 +129,13 @@ def unregister():
     bpy.app.handlers.redo_pre.remove(update_object_axes_drawing)
     bpy.app.handlers.load_pre.remove(update_object_axes_drawing)
 
+    from . handlers import focusHUD
+
+    if focusHUD and "RNA_HANDLE_REMOVED" not in str(focusHUD):
+        bpy.types.SpaceView3D.draw_handler_remove(focusHUD, 'WINDOW')
+
+    bpy.app.handlers.depsgraph_update_post.remove(focus_HUD)
+
 
     # TOOLS, PIE MENUS, KEYMAPS, MENUS
 
@@ -140,6 +150,7 @@ def unregister():
     # PROPERTIES
 
     del bpy.types.Scene.M3
+    del bpy.types.Object.M3
 
 
     # ICONS

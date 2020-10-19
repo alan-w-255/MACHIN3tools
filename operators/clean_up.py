@@ -2,11 +2,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty
 import bmesh
 import math
-
-
-selecttypeitems = [("NON-MANIFOLD", "Non-Manifold", ""),
-                   ("TRIS", "Tris", ""),
-                   ("NGONS", "Ngons", "")]
+from .. items import cleanup_select_items
 
 
 class CleanUp(bpy.types.Operator):
@@ -26,11 +22,13 @@ class CleanUp(bpy.types.Operator):
     delete_loose_edges: BoolProperty(name="Delete Loose Edges", default=True)
     delete_loose_faces: BoolProperty(name="Delete Loose Faces", default=False)
 
-    dissolve_2_edged: BoolProperty(name="Dissolve 2-Edged Verts", default=True)
-    angle_threshold: FloatProperty(name="Angle Threshould", default=179, min=0, max=180)
+    dissolve_redundant: BoolProperty(name="Dissolve Redundant", default=True)
+    dissolve_redundant_verts: BoolProperty(name="Dissolve Redundant Verts", default=True)
+    dissolve_redundant_edges: BoolProperty(name="Dissolve Redundant Edges", default=False)
+    dissolve_redundant_angle: FloatProperty(name="Dissolve Redundnat Angle", default=179.999, min=0, max=180, step=0.01, precision=6)
 
     select: BoolProperty(name="Select", default=True)
-    select_type: EnumProperty(name="Select", items=selecttypeitems, default="NON-MANIFOLD")
+    select_type: EnumProperty(name="Select", items=cleanup_select_items, default="NON-MANIFOLD")
 
     view_selected: BoolProperty(name="View Selected", default=False)
 
@@ -40,14 +38,14 @@ class CleanUp(bpy.types.Operator):
 
         col = box.column()
 
-        row = col.row()
+        row = col.split(factor=0.3, align=True)
         row.prop(self, "remove_doubles", text="Doubles")
         row.prop(self, "dissolve_degenerate", text="Degenerate")
         r = row.row()
         r.active = any([self.remove_doubles, self.dissolve_degenerate])
         r.prop(self, "distance", text="")
 
-        row = col.split(factor=0.33)
+        row = col.split(factor=0.3, align=True)
         row.prop(self, "delete_loose", text="Loose")
         r = row.row(align=True)
         r.active = self.delete_loose
@@ -55,11 +53,15 @@ class CleanUp(bpy.types.Operator):
         r.prop(self, "delete_loose_edges", text="Edges", toggle=True)
         r.prop(self, "delete_loose_faces", text="Faces", toggle=True)
 
-        row = col.row()
-        row.prop(self, "dissolve_2_edged", text="2-Edged Verts")
-        r = row.row()
-        r.active = self.dissolve_2_edged
-        r.prop(self, "angle_threshold", text="Angle")
+        row = col.split(factor=0.3, align=True)
+        row.prop(self, "dissolve_redundant", text="Redundant")
+        r = row.row(align=True)
+        r.active = self.dissolve_redundant
+        r.prop(self, "dissolve_redundant_verts", text="Verts", toggle=True)
+        r.prop(self, "dissolve_redundant_edges", text="Edges", toggle=True)
+        rr = r.row(align=True)
+        rr.active = any([self.dissolve_redundant_verts, self.dissolve_redundant_edges])
+        rr.prop(self, "dissolve_redundant_angle", text="Angle")
 
         row = col.row()
         row.prop(self, "recalc_normals")
@@ -113,8 +115,8 @@ class CleanUp(bpy.types.Operator):
         if self.delete_loose:
             self.delete_loose_geometry(bm)
 
-        if self.dissolve_2_edged:
-            self.dissolve_2_edged_verts(bm)
+        if self.dissolve_redundant:
+            self.dissolve_redundant_geometry(bm)
 
         if self.recalc_normals:
             bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
@@ -122,7 +124,6 @@ class CleanUp(bpy.types.Operator):
             if self.flip_normals:
                 for f in bm.faces:
                     f.normal_flip()
-
         return bm
 
     def delete_loose_geometry(self, bm):
@@ -138,24 +139,48 @@ class CleanUp(bpy.types.Operator):
             loose_faces = [f for f in bm.faces if all([not e.is_manifold for e in f.edges])]
             bmesh.ops.delete(bm, geom=loose_faces, context="FACES")
 
-    def dissolve_2_edged_verts(self, bm):
-        all_2_edged_verts = [v for v in bm.verts if len(v.link_edges) == 2]
+    def dissolve_redundant_geometry(self, bm):
+        '''
+        dissolve redundant verts on straight edges
+        dissolve redundant edges on flat faces
+        '''
 
-        straight_edged = []
+        if self.dissolve_redundant_edges:
+            manifold_edges = [e for e in bm.edges if e.is_manifold]
 
-        for v in all_2_edged_verts:
-            e1 = v.link_edges[0]
-            e2 = v.link_edges[1]
+            redundant_edges = []
 
-            vector1 = e1.other_vert(v).co - v.co
-            vector2 = e2.other_vert(v).co - v.co
+            for e in manifold_edges:
+                angle = math.degrees(e.calc_face_angle(0))
 
-            angle = math.degrees(vector1.angle(vector2))
+                if angle < 180 - self.dissolve_redundant_angle:
+                    redundant_edges.append(e)
 
-            if self.angle_threshold + 1 <= angle <= 181:
-                straight_edged.append(v)
+            bmesh.ops.dissolve_edges(bm, edges=redundant_edges, use_verts=False)
 
-        bmesh.ops.dissolve_verts(bm, verts=straight_edged)
+            # dissolving with use_verts enabled can cause problems in som cases, so it's better to check the left over edges for 2 edged verts, and remove those in a separate step
+            two_edged_verts = {v for e in redundant_edges if e.is_valid for v in e.verts if len(v.link_edges) == 2}
+            bmesh.ops.dissolve_verts(bm, verts=list(two_edged_verts))
+
+        # also run vert removal after edge removal to ensure verts from symmetry center lines get removed properly
+        if self.dissolve_redundant_verts:
+            two_edged_verts = [v for v in bm.verts if len(v.link_edges) == 2]
+
+            redundant_verts = []
+
+            for v in two_edged_verts:
+                e1 = v.link_edges[0]
+                e2 = v.link_edges[1]
+
+                vector1 = e1.other_vert(v).co - v.co
+                vector2 = e2.other_vert(v).co - v.co
+
+                angle = min(math.degrees(vector1.angle(vector2)), 180)
+
+                if self.dissolve_redundant_angle < angle:
+                    redundant_verts.append(v)
+
+            bmesh.ops.dissolve_verts(bm, verts=redundant_verts)
 
     def select_geometry(self, bm):
         for f in bm.faces:
