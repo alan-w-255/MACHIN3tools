@@ -1,4 +1,5 @@
 import bpy
+import bmesh
 from bpy.props import BoolProperty, EnumProperty, IntProperty
 from .. utils.registration import get_prefs, get_addon
 from .. utils.view import update_local_view
@@ -18,6 +19,8 @@ class Focus(bpy.types.Operator):
     levels: EnumProperty(name="Levels", items=focus_levels_items, description="Switch between single-level Blender native Local View and multi-level MACHIN3 Focus", default="MULTIPLE")
     unmirror: BoolProperty(name="Un-Mirror", default=True)
     ignore_mirrors: BoolProperty(name="Ignore Mirrors", default=True)
+
+    invert: BoolProperty(name="Inverted Focus", default=False)
 
     def draw(self, context):
         layout = self.layout
@@ -42,6 +45,12 @@ class Focus(bpy.types.Operator):
     def poll(cls, context):
         return context.space_data.type == 'VIEW_3D' and context.region.type == 'WINDOW'
 
+    def invoke(self, context, event):
+        self.invert = event.alt
+
+        self.execute(context)
+        return {'FINISHED'}
+
     def execute(self, context):
         if self.method == 'VIEW_SELECTED':
             self.view_selected(context)
@@ -56,7 +65,9 @@ class Focus(bpy.types.Operator):
 
         nothing_selected = False
 
-        if context.mode == 'OBJECT':
+        mode = context.mode
+
+        if mode == 'OBJECT':
             sel = context.selected_objects
 
             if not sel:
@@ -69,6 +80,17 @@ class Focus(bpy.types.Operator):
                 for mod in mirrors:
                     mod.show_viewport = False
 
+        elif mode == 'EDIT_MESH':
+            bm = bmesh.from_edit_mesh(context.active_object.data)
+            bm.normal_update()
+
+            nothing_selected = not [v for v in bm.verts if v.select]
+
+            if nothing_selected:
+                for v in bm.verts:
+                    v.select_set(True)
+
+                bm.select_flush(True)
 
         bpy.ops.view3d.view_selected('INVOKE_DEFAULT') if get_prefs().focus_view_transition else bpy.ops.view3d.view_selected()
 
@@ -76,11 +98,18 @@ class Focus(bpy.types.Operator):
             mod.show_viewport = True
 
         if nothing_selected:
-            for obj in context.visible_objects:
-                obj.select_set(False)
+            if mode == 'OBJECT':
+                for obj in context.visible_objects:
+                    obj.select_set(False)
+
+            elif mode == 'EDIT_MESH':
+                for f in bm.faces:
+                    f.select_set(False)
+
+                bm.select_flush(False)
 
     def local_view(self, context, debug=False):
-        def focus(context, view, sel, history, init=False):
+        def focus(context, view, sel, history, init=False, invert=False):
             vis = context.visible_objects
             hidden = [obj for obj in vis if obj not in sel]
 
@@ -115,8 +144,14 @@ class Focus(bpy.types.Operator):
                             entry.obj = obj
                             entry.name = obj.name
 
-                # selection event to force a HUD drawing/handler update
-                sel[0].select_set(True)
+                if invert:
+                    for obj in sel:
+                        obj.select_set(False)
+
+                # generic selection event to force a HUD drawing/handler update
+                else:
+                    sel[0].select_set(True)
+
 
         def unfocus(context, view, history):
             last_epoch = history[-1]
@@ -151,6 +186,14 @@ class Focus(bpy.types.Operator):
         sel = context.selected_objects
         vis = context.visible_objects
 
+        # opionally invert the selection
+        if self.invert:
+            for obj in vis:
+                obj.select_set(not obj.select_get())
+
+            sel = context.selected_objects
+
+
         # blender native local view
         if self.levels == "SINGLE":
             if self.unmirror:
@@ -179,7 +222,7 @@ class Focus(bpy.types.Operator):
 
                 # go deeper
                 if context.selected_objects and not vis == sel:
-                    focus(context, view, sel, history)
+                    focus(context, view, sel, history, invert=self.invert)
 
                 # go higher
                 else:
@@ -198,7 +241,7 @@ class Focus(bpy.types.Operator):
                     history.clear()
 
                 # self.show_tool_props = True
-                focus(context, view, sel, history, init=True)
+                focus(context, view, sel, history, init=True, invert=self.invert)
 
             if debug:
                 for epoch in history:

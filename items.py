@@ -8,6 +8,19 @@ uv_axis_items = [('U', 'U', ''),
 
 # OPERATORS
 
+
+smartvert_mode_items = [("MERGE", "Merge", ""),
+                        ("CONNECT", "Connect Paths", "")]
+
+
+smartvert_merge_type_items = [("LAST", "Last", ""),
+                              ("CENTER", "Center", ""),
+                              ("PATHS", "Paths", "")]
+
+smartvert_path_type_items = [("TOPO", "Topo", ""),
+                             ("LENGTH", "Length", "")]
+
+
 focus_method_items = [('VIEW_SELECTED', 'View Selected', ''),
                       ('LOCAL_VIEW', 'Local View', '')]
 
@@ -83,3 +96,10 @@ cycles_device_items = [('CPU', 'CPU', ''),
 bc_orientation_items = [('LOCAL', 'Local', ''),
                         ('NEAREST', 'Nearest', ''),
                         ('LONGEST', 'Longest', '')]
+
+
+tool_name_mapping_dict = {'BC': 'BoxCutter',
+                          'Hops': 'HardOps',
+                          'builtin.select_box': 'Select Box',
+                          'machin3.tool_hyper_cursor': 'Hyper Cursor',
+                          'machin3.tool_hyper_cursor_simple': 'Simple Hyper Cursor'}

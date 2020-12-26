@@ -1,5 +1,5 @@
 import bpy
-from bpy.props import IntProperty, StringProperty, CollectionProperty, BoolProperty, EnumProperty
+from bpy.props import IntProperty, StringProperty, CollectionProperty, BoolProperty, EnumProperty, FloatProperty
 import os
 from . properties import AppendMatsCollection
 from . utils.ui import get_icon, draw_keymap_items
@@ -122,6 +122,9 @@ class MACHIN3toolsPreferences(bpy.types.AddonPreferences):
     def update_activate_mesh_cut(self, context):
         activate(self, register=self.activate_mesh_cut, tool="mesh_cut")
 
+    def update_activate_surface_slide(self, context):
+        activate(self, register=self.activate_surface_slide, tool="surface_slide")
+
     def update_activate_filebrowser_tools(self, context):
         activate(self, register=self.activate_filebrowser_tools, tool="filebrowser")
 
@@ -131,8 +134,12 @@ class MACHIN3toolsPreferences(bpy.types.AddonPreferences):
     def update_activate_unity(self, context):
         activate(self, register=self.activate_unity, tool="unity")
 
+    def update_activate_material_picker(self, context):
+        activate(self, register=self.activate_material_picker, tool="material_picker")
+
     def update_activate_customize(self, context):
         activate(self, register=self.activate_customize, tool="customize")
+
 
     # RUNTIME PIE ACTIVATION
 
@@ -192,15 +199,25 @@ class MACHIN3toolsPreferences(bpy.types.AddonPreferences):
     obj_mode_rotate_around_active: BoolProperty(name="Rotate Around Selection, but only in Object Mode", default=False)
     custom_views_use_trackball: BoolProperty(name="Force Trackball Navigation when using Custom Views", default=True)
     custom_views_set_transform_preset: BoolProperty(name="Set Transform Preset when using Custom Views", default=True)
+    custom_views_toggle_axes_drawing: BoolProperty(name="Toggle Custom View Axes Drawing", default=True)
     show_orbit_method: BoolProperty(name="Show Orbit Method Selection", default=True)
 
+    cursor_show_to_grid: BoolProperty(name="Show Cursor and Selected to Grid", default=False)
+    cursor_set_transform_preset: BoolProperty(name="Set Transform Preset when Setting Cursor", default=True)
+    cursor_toggle_axes_drawing: BoolProperty(name="Toggle Cursor Axes Drawing", default=True)
+
     toggle_cavity: BoolProperty(name="Toggle Cavity/Curvature OFF in Edit Mode, ON in Object Mode", default=True)
+    sync_tools: BoolProperty(name="Sync Tool if possible, when switching Modes", default=True)
     focus_view_transition: BoolProperty(name="Viewport Transitional Motion", default=True)
 
     tools_show_boxcutter_presets: BoolProperty(name="Show BoxCutter Presets", default=True)
     tools_show_hardops_menu: BoolProperty(name="Show Hard Ops Menu", default=True)
     tools_show_quick_favorites: BoolProperty(name="Show Quick Favorites", default=False)
     tools_show_tool_bar: BoolProperty(name="Show Tool Bar", default=False)
+    tools_HUD_fade: FloatProperty(name="HUD Fade Time (seconds)", default=0.75, min=0.1, max=3)
+
+    matpick_spacing_obj: FloatProperty(name="Object Mode Spacing", min=0, default=20)
+    matpick_spacing_edit: FloatProperty(name="Edit Mode Spacing", min=0, default=5)
 
     custom_startup: BoolProperty(name="Startup Scene", default=False)
     custom_theme: BoolProperty(name="Theme", default=True)
@@ -229,9 +246,11 @@ class MACHIN3toolsPreferences(bpy.types.AddonPreferences):
     activate_apply: BoolProperty(name="Apply", default=False, update=update_activate_apply)
     activate_select: BoolProperty(name="Select", default=False, update=update_activate_select)
     activate_mesh_cut: BoolProperty(name="Mesh Cut", default=False, update=update_activate_mesh_cut)
+    activate_surface_slide: BoolProperty(name="Surface Slide", default=False, update=update_activate_surface_slide)
     activate_filebrowser_tools: BoolProperty(name="Filebrowser Tools", default=False, update=update_activate_filebrowser_tools)
     activate_smart_drive: BoolProperty(name="Smart Drive", default=False, update=update_activate_smart_drive)
     activate_unity: BoolProperty(name="Unity", default=False, update=update_activate_unity)
+    activate_material_picker: BoolProperty(name="Material Picker", default=False, update=update_activate_material_picker)
     activate_customize: BoolProperty(name="Customize", default=False, update=update_activate_customize)
 
 
@@ -343,6 +362,10 @@ class MACHIN3toolsPreferences(bpy.types.AddonPreferences):
         row.label(text="Knife intersect a mesh, using another object.")
 
         row = column.split(factor=0.25)
+        row.prop(self, "activate_surface_slide", toggle=True)
+        row.label(text="Easily modify mesh topology, while maintaining form.")
+
+        row = column.split(factor=0.25)
         row.prop(self, "activate_filebrowser_tools", toggle=True)
         row.label(text="Additional tools for the Filebrowser.")
 
@@ -353,6 +376,10 @@ class MACHIN3toolsPreferences(bpy.types.AddonPreferences):
         row = column.split(factor=0.25)
         row.prop(self, "activate_unity", toggle=True)
         row.label(text="Unity related Tools")
+
+        row = column.split(factor=0.25)
+        row.prop(self, "activate_material_picker", toggle=True)
+        row.label(text="Pick Materials from the Material Workspace's 3D View")
 
         row = column.split(factor=0.25)
         row.prop(self, "activate_customize", toggle=True)
@@ -442,6 +469,26 @@ class MACHIN3toolsPreferences(bpy.types.AddonPreferences):
             column.prop(self, "focus_view_transition")
 
 
+        # MATERIAL PICKER
+
+        if getattr(bpy.types, "MACHIN3_OT_material_picker", False):
+            bb = b.box()
+            bb.label(text="Material Picker")
+
+            column = bb.column()
+
+            row = column.row()
+            r = row.split(factor=0.2)
+            r.prop(self, "matpick_spacing_obj", text="")
+            r.label(text="Object Mode Spacing")
+
+            row = column.row()
+            r = row.split(factor=0.2)
+            r.prop(self, "matpick_spacing_edit", text="")
+            r.label(text="Edit Mode Spacing")
+
+
+
         # CUSTOMIZE
 
         if getattr(bpy.types, "MACHIN3_OT_customize", False):
@@ -501,6 +548,7 @@ class MACHIN3toolsPreferences(bpy.types.AddonPreferences):
             column = bb.column()
 
             column.prop(self, "toggle_cavity")
+            column.prop(self, "sync_tools")
 
 
         # SAVE PIE
@@ -570,7 +618,27 @@ class MACHIN3toolsPreferences(bpy.types.AddonPreferences):
             if self.activate_transform_pie:
                 column.prop(self, "custom_views_set_transform_preset")
 
+            if self.activate_shading_pie:
+                column.prop(self, "custom_views_toggle_axes_drawing")
+
             column.prop(self, "show_orbit_method")
+
+
+        # CURSOR and ORIGIN PIE
+
+        if getattr(bpy.types, "MACHIN3_MT_cursor_pie", False):
+            bb = b.box()
+            bb.label(text="Cursor and Origin Pie")
+            column = bb.column()
+
+            column.prop(self, "cursor_show_to_grid")
+
+            if self.activate_transform_pie or self.activate_shading_pie:
+                    if self.activate_transform_pie:
+                        column.prop(self, "cursor_set_transform_preset")
+
+                    if self.activate_shading_pie:
+                        column.prop(self, "cursor_toggle_axes_drawing")
 
 
         # TOOLS PIE
@@ -582,10 +650,12 @@ class MACHIN3toolsPreferences(bpy.types.AddonPreferences):
             split = bb.split(factor=0.5)
 
             col = split.column()
+            col.prop(self, "tools_HUD_fade", slider=True)
             col.prop(self, "tools_show_boxcutter_presets")
             col.prop(self, "tools_show_hardops_menu")
 
             col = split.column()
+            col.label(text='')
             col.prop(self, "tools_show_quick_favorites")
             col.prop(self, "tools_show_tool_bar")
 

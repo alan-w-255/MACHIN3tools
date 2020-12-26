@@ -1,7 +1,7 @@
 bl_info = {
     "name": "MACHIN3tools",
     "author": "MACHIN3",
-    "version": (0, 4, 1),
+    "version": (0, 5, 0),
     "blender": (2, 83, 0),
     "location": "",
     "description": "Streamlining Blender 2.80 and beyond.",
@@ -20,7 +20,15 @@ def reload_modules(name):
     import os
     import importlib
 
-    # first fetch and reload all utils modules
+
+    # first update the classes and keys dicts, the properties, items, colors
+    from . import registration, items, colors
+
+    for module in [registration, items, colors]:
+        print("reloading", module.__name__)
+        importlib.reload(module)
+
+    # then fetch and reload all utils modules
     utils_modules = sorted([name[:-3] for name in os.listdir(os.path.join(__path__[0], "utils")) if name.endswith('.py')])
 
     for module in utils_modules:
@@ -31,9 +39,10 @@ def reload_modules(name):
         exec(impline)
         importlib.reload(eval(module))
 
-    # then update the classes and keys dicts
-    from . import registration
-    importlib.reload(registration)
+
+    from . import handlers
+    print("reloading", handlers.__name__)
+    importlib.reload(handlers)
 
     # and based on that, reload the modules containing operator and menu classes
     modules = []
@@ -63,15 +72,12 @@ if 'bpy' in locals():
     reload_modules(bl_info['name'])
 
 import bpy
-from bpy.props import PointerProperty
+from bpy.props import PointerProperty, BoolProperty
 from . properties import M3SceneProperties, M3ObjectProperties
 from . utils.registration import get_core, get_tools, get_pie_menus, get_menus
 from . utils.registration import register_classes, unregister_classes, register_keymaps, unregister_keymaps, register_icons, unregister_icons, add_object_context_menu, remove_object_context_menu
-from . utils.registration import add_object_buttons
-from . handlers import update_object_axes_drawing, focus_HUD
-
-
-# TODO: support translation, see https://blendermarket.com/inbox/conversations/20371
+from . utils.registration import add_object_buttons, material_pick_button
+from . handlers import update_object_axes_drawing, focus_HUD, surface_slide_HUD
 
 
 def register():
@@ -87,6 +93,7 @@ def register():
     bpy.types.Scene.M3 = PointerProperty(type=M3SceneProperties)
     bpy.types.Object.M3 = PointerProperty(type=M3ObjectProperties)
 
+
     # TOOLS, PIE MENUS, KEYMAPS, MENUS
 
     tool_classlists, tool_keylists, tool_count = get_tools()
@@ -99,6 +106,7 @@ def register():
     add_object_context_menu()
 
     bpy.types.VIEW3D_MT_mesh_add.prepend(add_object_buttons)
+    bpy.types.VIEW3D_MT_editor_menus.append(material_pick_button)
 
 
     # ICONS
@@ -113,6 +121,7 @@ def register():
     bpy.app.handlers.load_pre.append(update_object_axes_drawing)
 
     bpy.app.handlers.depsgraph_update_post.append(focus_HUD)
+    bpy.app.handlers.depsgraph_update_post.append(surface_slide_HUD)
 
 
     # REGISTRATION OUTPUT
@@ -129,17 +138,22 @@ def unregister():
     bpy.app.handlers.redo_pre.remove(update_object_axes_drawing)
     bpy.app.handlers.load_pre.remove(update_object_axes_drawing)
 
-    from . handlers import focusHUD
+    from . handlers import focusHUD, surfaceslideHUD
 
     if focusHUD and "RNA_HANDLE_REMOVED" not in str(focusHUD):
         bpy.types.SpaceView3D.draw_handler_remove(focusHUD, 'WINDOW')
 
+    if surfaceslideHUD and "RNA_HANDLE_REMOVED" not in str(surfaceslideHUD):
+        bpy.types.SpaceView3D.draw_handler_remove(surfaceslideHUD, 'WINDOW')
+
     bpy.app.handlers.depsgraph_update_post.remove(focus_HUD)
+    bpy.app.handlers.depsgraph_update_post.remove(surface_slide_HUD)
 
 
     # TOOLS, PIE MENUS, KEYMAPS, MENUS
 
     bpy.types.VIEW3D_MT_mesh_add.remove(add_object_buttons)
+    bpy.types.VIEW3D_MT_editor_menus.remove(material_pick_button)
 
     remove_object_context_menu()
 

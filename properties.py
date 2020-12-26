@@ -6,6 +6,8 @@ from . utils.math import flatten_matrix
 from . utils.world import get_world_output
 from . utils.system import abspath
 from . utils.registration import get_prefs, get_addon_prefs
+from . utils.draw import remove_object_axes_drawing_handler, add_object_axes_drawing_handler
+from . utils.tools import get_active_tool
 from . items import eevee_preset_items, align_mode_items, render_engine_items, cycles_device_items, driver_limit_items, axis_items, driver_transform_items, driver_space_items, bc_orientation_items
 
 
@@ -259,12 +261,25 @@ class M3SceneProperties(bpy.types.PropertyGroup):
         if get_prefs().activate_transform_pie and get_prefs().custom_views_set_transform_preset:
             bpy.ops.machin3.set_transform_preset(pivot='MEDIAN_POINT', orientation='LOCAL' if self.custom_views_local else 'GLOBAL')
 
+        # toggle axes drawing
+        if get_prefs().activate_shading_pie and get_prefs().custom_views_toggle_axes_drawing:
+            dns = bpy.app.driver_namespace
+            handler = dns.get('draw_object_axes')
+
+            if handler:
+                remove_object_axes_drawing_handler(handler)
+
+            if self.custom_views_local and context.active_object:
+                add_object_axes_drawing_handler(dns, context, [context.active_object], False)
+
+            context.area.tag_redraw()
+
     def update_custom_views_cursor(self, context):
         if self.avoid_update:
             self.avoid_update = False
             return
 
-        # only one custom view can be active at a tim
+        # only one custom view can be active at a time
         if self.custom_views_cursor and self.custom_views_local:
             self.avoid_update = True
             self.custom_views_local = False
@@ -276,20 +291,25 @@ class M3SceneProperties(bpy.types.PropertyGroup):
         if get_prefs().custom_views_use_trackball:
             context.preferences.inputs.view_rotate_method = 'TRACKBALL' if self.custom_views_cursor else 'TURNTABLE'
 
-        # set transform preset
-        if get_prefs().activate_transform_pie and get_prefs().custom_views_set_transform_preset:
-            bpy.ops.machin3.set_transform_preset(pivot='CURSOR' if self.custom_views_cursor else 'MEDIAN_POINT', orientation='CURSOR' if self.custom_views_cursor else 'GLOBAL')
+        # only actually set the transform preset and draw the cursor axis if hyper cursor tools aren't active
+        if 'machin3.tool_hyper_cursor' not in get_active_tool(context):
 
+            # set transform preset
+            if get_prefs().activate_transform_pie and get_prefs().custom_views_set_transform_preset:
+                bpy.ops.machin3.set_transform_preset(pivot='CURSOR' if self.custom_views_cursor else 'MEDIAN_POINT', orientation='CURSOR' if self.custom_views_cursor else 'GLOBAL')
 
-    def update_bcorientation(self, context):
-        bcprefs = get_addon_prefs('BoxCutter')
+            # toggle axes drawing
+            if get_prefs().activate_shading_pie and get_prefs().custom_views_toggle_axes_drawing:
+                dns = bpy.app.driver_namespace
+                handler = dns.get('draw_object_axes')
 
-        if self.bcorientation == 'LOCAL':
-            bcprefs.behavior.orient_method = 'LOCAL'
-        elif self.bcorientation == 'NEAREST':
-            bcprefs.behavior.orient_method = 'NEAREST'
-        elif self.bcorientation == 'LONGEST':
-            bcprefs.behavior.orient_method = 'TANGENT'
+                if handler:
+                    remove_object_axes_drawing_handler(handler)
+
+                if self.custom_views_cursor:
+                    add_object_axes_drawing_handler(dns, context, [], True)
+
+                context.area.tag_redraw()
 
 
     # SHADING
@@ -355,6 +375,18 @@ class M3SceneProperties(bpy.types.PropertyGroup):
     unity_export_path: StringProperty(name="Unity Export Path", subtype='FILE_PATH', update=update_unity_export_path)
     unity_triangulate: BoolProperty(name="Triangulate before exporting", description="Add Triangulate Modifier to the end of every object's stack", default=False)
 
+
+    # BoxCutter
+
+    def update_bcorientation(self, context):
+        bcprefs = get_addon_prefs('BoxCutter')
+
+        if self.bcorientation == 'LOCAL':
+            bcprefs.behavior.orient_method = 'LOCAL'
+        elif self.bcorientation == 'NEAREST':
+            bcprefs.behavior.orient_method = 'NEAREST'
+        elif self.bcorientation == 'LONGEST':
+            bcprefs.behavior.orient_method = 'TANGENT'
 
     # BoxCutter
 

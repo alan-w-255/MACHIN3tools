@@ -6,7 +6,8 @@ from .. utils.registration import get_prefs, get_addon
 from .. utils.ui import get_icon
 from .. utils.collection import get_scene_collections
 from .. utils.system import abspath
-from .. utils.tools import get_tools_from_context, get_tool_options
+from .. utils.tools import get_tools_from_context, get_active_tool
+
 
 # TODO: snapping pie
 
@@ -21,6 +22,9 @@ grouppro = None
 decalmachine = None
 boxcutter = None
 hardops = None
+hypercursor = None
+hypercursorlast = None
+
 
 
 class PieModes(Menu):
@@ -87,7 +91,35 @@ class PieModes(Menu):
                                 pie.separator()
 
                             # 1 - BOTTOM - LEFT
-                            pie.separator()
+                            if get_prefs().activate_surface_slide:
+                                hassurfaceslide = [mod for mod in active.modifiers if mod.type == 'SHRINKWRAP' and 'SurfaceSlide' in mod.name]
+
+                                if context.mode == 'EDIT_MESH':
+                                    box = pie.split()
+                                    column = box.column(align=True)
+
+                                    row = column.row(align=True)
+                                    row.scale_y = 1.2
+
+                                    if hassurfaceslide:
+                                        row.operator("machin3.finish_surface_slide", text='Finish Surface Slide', icon='OUTLINER_DATA_SURFACE')
+                                    else:
+                                        row.operator("machin3.surface_slide", text='Surface Slide', icon='OUTLINER_DATA_SURFACE')
+
+                                elif hassurfaceslide:
+                                    box = pie.split()
+                                    column = box.column(align=True)
+
+                                    row = column.row(align=True)
+                                    row.scale_y = 1.2
+                                    row.operator("machin3.finish_surface_slide", text='Finish Surface Slide', icon='OUTLINER_DATA_SURFACE')
+
+                                else:
+                                    pie.separator()
+
+                            else:
+                                pie.separator()
+
 
                             # 3 - BOTTOM - RIGHT
                             if context.mode == "EDIT_MESH":
@@ -906,7 +938,7 @@ class PieShading(Menu):
         else:
             row.prop(active, "display_type", text="")
 
-        if overlay.show_overlays and shading.type == 'SOLID':
+        if overlay.show_overlays and shading.type in ['SOLID', 'WIREFRAME']:
             row = column.split(factor=0.6)
             r = row.row(align=True)
             r.prop(active, "show_name", text="Name")
@@ -930,7 +962,7 @@ class PieShading(Menu):
             else:
                 row.prop(active, "show_axis", text="Axis")
 
-        elif shading.type == 'SOLID':
+        elif shading.type in ['SOLID', 'WIREFRAME']:
             if shading.color_type == 'OBJECT':
                 row = column.split(factor=0.5)
                 row.prop(active, "show_in_front", text="In Front")
@@ -939,6 +971,7 @@ class PieShading(Menu):
             else:
                 row = column.row()
                 row.prop(active, "show_in_front", text="In Front")
+
 
 
         if active.type == "MESH":
@@ -1332,12 +1365,15 @@ class PieViewport(Menu):
 
         # 1 - BOTTOM - LEFT
         if get_prefs().show_orbit_method:
-            pie.operator("machin3.toggle_orbit_method", text="Turntable", depress=context.preferences.inputs.view_rotate_method=='TURNTABLE').method = 'TURNTABLE'
+            box = pie.split()
+            box.scale_y = 1.2
+            box.operator("machin3.toggle_orbit_method", text="Turntable", depress=context.preferences.inputs.view_rotate_method=='TURNTABLE').method = 'TURNTABLE'
 
         # 3 - BOTTOM - RIGHT
         if get_prefs().show_orbit_method:
-            pie.operator("machin3.toggle_orbit_method", text="Trackball", depress=context.preferences.inputs.view_rotate_method=='TRACKBALL').method = 'TRACKBALL'
-
+            box = pie.split()
+            box.scale_y = 1.2
+            box.operator("machin3.toggle_orbit_method", text="Trackball", depress=context.preferences.inputs.view_rotate_method=='TRACKBALL').method = 'TRACKBALL'
 
     def draw_camera_box(self, scene, view, layout):
         column = layout.column(align=True)
@@ -1804,11 +1840,27 @@ class PieCursor(Menu):
         layout = self.layout
         pie = layout.menu_pie()
 
+        global hypercursor
+
+        if hypercursor is None:
+            hypercursor = get_addon("HyperCursor")[0]
+
+
         # 4 - LEFT
-        pie.operator("machin3.cursor_to_origin", text="to Origin", icon="PIVOT_CURSOR")
+
+        if context.mode == 'EDIT_MESH':
+            sel, icon = ('Vert', 'VERTEXSEL') if tuple(context.scene.tool_settings.mesh_select_mode) == (True, False, False) else ('Edge', 'EDGESEL') if tuple(context.scene.tool_settings.mesh_select_mode) == (False, True, False) else ('Face', 'FACESEL') if tuple(bpy.context.scene.tool_settings.mesh_select_mode) == (False, False, True) else (None, None)
+            pie.operator("machin3.cursor_to_selected", text="to %s" % (sel), icon="PIVOT_CURSOR")
+        else:
+            pie.operator("machin3.cursor_to_selected", text="to Selected", icon="PIVOT_CURSOR")
+
 
         # 6 - RIGHT
-        pie.operator("view3d.snap_selected_to_cursor", text="to Cursor", icon="RESTRICT_SELECT_OFF").use_offset = False
+        if context.mode == 'OBJECT':
+            pie.operator("machin3.selected_to_cursor", text="to Cursor", icon="RESTRICT_SELECT_OFF")
+
+        else:
+            pie.operator("view3d.snap_selected_to_cursor", text="to Cursor", icon="RESTRICT_SELECT_OFF").use_offset = False
 
         # 2 - BOTTOM
 
@@ -1816,10 +1868,11 @@ class PieCursor(Menu):
             box = pie.split()
             column = box.column(align=True)
 
-            if context.mode == 'OBJECT':
+            if get_prefs().cursor_show_to_grid:
                 column.separator()
                 column.separator()
 
+            if context.mode == 'OBJECT':
                 row = column.split(factor=0.25)
                 row.separator()
                 row.label(text="Object Origin")
@@ -1828,7 +1881,7 @@ class PieCursor(Menu):
 
                 row = column.split(factor=0.5, align=True)
                 row.scale_y = 1.5
-                row.operator("object.origin_set", text="to Cursor", icon="LAYER_ACTIVE").type = "ORIGIN_CURSOR"
+                row.operator("machin3.origin_to_cursor", text="to Cursor", icon="LAYER_ACTIVE")
                 row.operator("object.origin_set", text="to Geometry", icon="OBJECT_ORIGIN").type = "ORIGIN_GEOMETRY"
 
                 row = column.split(factor=0.20, align=True)
@@ -1837,45 +1890,56 @@ class PieCursor(Menu):
                 r = row.split(factor=0.7, align=True)
                 r.operator("machin3.origin_to_active", text="to Active", icon="TRANSFORM_ORIGINS")
 
-            elif context.mode == 'EDIT_MESH' and tuple(context.scene.tool_settings.mesh_select_mode) in [(True, False, False), (False, True, False), (False, False, True)]:
-                column.separator()
-                column.separator()
-
+            elif context.mode == 'EDIT_MESH':
                 row = column.split(factor=0.25)
                 row.separator()
                 row.label(text="Object Origin")
+
                 column.scale_x = 1.1
 
-                row = column.split(factor=0.25)
-                row.scale_y = 1.5
-                row.separator()
+                if tuple(context.scene.tool_settings.mesh_select_mode) in [(True, False, False), (False, True, False), (False, False, True)]:
 
-                sel, icon = ('Vert', 'VERTEXSEL') if tuple(context.scene.tool_settings.mesh_select_mode) == (True, False, False) else ('Edge', 'EDGESEL') if tuple(context.scene.tool_settings.mesh_select_mode) == (False, True, False) else ('Face', 'FACESEL') if tuple(bpy.context.scene.tool_settings.mesh_select_mode) == (False, False, True) else (None, None)
-                if sel:
+                    sel, icon = ('Vert', 'VERTEXSEL') if tuple(context.scene.tool_settings.mesh_select_mode) == (True, False, False) else ('Edge', 'EDGESEL') if tuple(context.scene.tool_settings.mesh_select_mode) == (False, True, False) else ('Face', 'FACESEL') if tuple(bpy.context.scene.tool_settings.mesh_select_mode) == (False, False, True) else (None, None)
+
+                    row = column.row(align=True)
+                    row.scale_y = 1.5
+                    row.operator("machin3.origin_to_cursor", text="to Cursor", icon='LAYER_ACTIVE')
                     row.operator("machin3.origin_to_active", text="to %s" % (sel), icon=icon)
+
+                else:
+
+                    row = column.split(factor=0.25, align=True)
+                    row.scale_y = 1.5
+                    row.separator()
+                    row.operator("machin3.origin_to_cursor", text="to Cursor", icon='LAYER_ACTIVE')
 
         else:
             pie.separator()
 
         # 8 - TOP
-        pie.separator()
+        if hypercursor and context.mode in ['OBJECT', 'EDIT_MESH']:
+            tools = get_tools_from_context(context)
+            pie.operator("machin3.transform_cursor", text="   Drag Hyper Cursor", icon_value=tools['machin3.tool_hyper_cursor']['icon_value']).mode = 'DRAG'
+        else:
+            pie.separator()
 
         # 7 - TOP - LEFT
-
-        if context.mode == 'EDIT_MESH':
-            sel, icon = ('Vert', 'VERTEXSEL') if tuple(context.scene.tool_settings.mesh_select_mode) == (True, False, False) else ('Edge', 'EDGESEL') if tuple(context.scene.tool_settings.mesh_select_mode) == (False, True, False) else ('Face', 'FACESEL') if tuple(bpy.context.scene.tool_settings.mesh_select_mode) == (False, False, True) else (None, None)
-            pie.operator("machin3.cursor_to_selected", text="to %s" % (sel), icon="PIVOT_CURSOR")
-        else:
-            pie.operator("machin3.cursor_to_selected", text="to Selected", icon="PIVOT_CURSOR")
+        pie.operator("machin3.cursor_to_origin", text="to Origin", icon="PIVOT_CURSOR")
 
         # 9 - TOP - RIGHT
         pie.operator("view3d.snap_selected_to_cursor", text="to Cursor, Offset", icon="RESTRICT_SELECT_OFF").use_offset = True
 
         # 1 - BOTTOM - LEFT
-        pie.operator("view3d.snap_cursor_to_grid", text="to Grid", icon="PIVOT_CURSOR")
+        if get_prefs().cursor_show_to_grid:
+            pie.operator("view3d.snap_cursor_to_grid", text="to Grid", icon="PIVOT_CURSOR")
+        else:
+            pie.separator()
 
         # 3 - BOTTOM - RIGHT
-        pie.operator("view3d.snap_selected_to_grid", text="to Grid", icon="RESTRICT_SELECT_OFF")
+        if get_prefs().cursor_show_to_grid:
+            pie.operator("view3d.snap_selected_to_grid", text="to Grid", icon="RESTRICT_SELECT_OFF")
+        else:
+            pie.separator()
 
 
 class PieTransform(Menu):
@@ -2478,15 +2542,19 @@ class PieTools(Menu):
 
         m3 = context.scene.M3
 
-        global boxcutter, hardops
+        global boxcutter, hardops, hypercursor, hypercursorlast
 
         # NOTE: The BoxCutter tool will be named like the installation folder, but the HOps tool will aways be called 'Hops'
         if boxcutter is None:
-            _, boxcutter, _, _ = get_addon("BoxCutter")
+            boxcutter = get_addon("BoxCutter")[1]
 
         if hardops is None:
-            hardops, _, _, _ = get_addon("Hard Ops 9")
+            hardops = get_addon("Hard Ops 9")[0]
 
+        if hypercursor is None:
+            hypercursor = get_addon("HyperCursor")[0]
+
+        # fetch all current tools
         tools = get_tools_from_context(context)
 
         if context.mode in ['OBJECT', 'EDIT_MESH']:
@@ -2494,14 +2562,17 @@ class PieTools(Menu):
             # 4 - LEFT
             if boxcutter in tools:
                 tool = tools[boxcutter]
-                pie.operator("wm.tool_set_by_id", text=tool['label'], icon_value=tool['icon_value']).name = boxcutter
+                # NOTE: without adding the spaces, the icon will overlap the text, but only for my own op, not fr wm.tool_set_by_id
+                # pie.operator("wm.tool_set_by_id", text=tool['label'], icon_value=tool['icon_value']).name = boxcutter
+                pie.operator("machin3.set_tool_by_name", text="   " + tool['label'], depress=tool['active'], icon_value=tool['icon_value']).name = boxcutter
             else:
                 pie.separator()
 
             # 6 - RIGHT
             if 'Hops' in tools:
                 tool = tools['Hops']
-                pie.operator("wm.tool_set_by_id", text=tool['label'], icon_value=tool['icon_value']).name = 'Hops'
+                # pie.operator("wm.tool_set_by_id", text=tool['label'], icon_value=tool['icon_value']).name = 'Hops'
+                pie.operator("machin3.set_tool_by_name", text="   " + tool['label'], depress=tool['active'], icon_value=tool['icon_value']).name = 'Hops'
             else:
                 pie.separator()
 
@@ -2518,8 +2589,24 @@ class PieTools(Menu):
 
             # 8 - TOP
             if 'builtin.select_box' in tools:
-                tool = tools['builtin.select_box']
-                pie.operator("wm.tool_set_by_id", text=tool['label'], icon_value=tool['icon_value']).name='builtin.select_box'
+                if hypercursor:
+                    active_tool = get_active_tool(context)
+
+                    # set the last used hyper cursor tool
+                    if 'machin3.tool_hyper_cursor' in active_tool:
+                        hypercursorlast = active_tool
+
+                    # fetch the last used of the hyper cursor tools if one was set
+                    hc = hypercursorlast if hypercursorlast else 'machin3.tool_hyper_cursor'
+
+                    name = hc if active_tool == 'builtin.select_box' else 'builtin.select_box'
+                    tool = tools[name]
+                    pie.operator("machin3.set_tool_by_name", text="   " + tool['label'], depress=tool['active'], icon_value=tool['icon_value']).name=name
+
+                else:
+                    tool = tools['builtin.select_box']
+                    pie.operator("machin3.set_tool_by_name", text="   " + tool['label'], depress=tool['active'], icon_value=tool['icon_value']).name='builtin.select_box'
+
             else:
                 pie.separator()
 

@@ -1,6 +1,7 @@
 import bpy
 from bpy.props import FloatProperty, BoolProperty, EnumProperty
 from .. utils.property import step_enum
+from .. colors import white
 
 
 state_items = [("MIN", "Minimum", ""),
@@ -91,7 +92,7 @@ class ClippingToggle(bpy.types.Operator):
         self.avoid_execute = True
 
     maximum: FloatProperty(name="Maximum", default=1, min=0, precision=2, step=10, update=update_clip_start_maximum)
-    medium: FloatProperty(name="Medium", default=0.1, min=0, precision=3, step=1, update=update_clip_start_medium)
+    medium: FloatProperty(name="Medium", default=0.01, min=0, precision=3, step=1, update=update_clip_start_medium)
     minimum: FloatProperty(name="Minimum", default=0.001, min=0, precision=5, step=0.001, update=update_clip_start_minimum)
 
     state: EnumProperty(name="Current State", items=state_items, default="MED", update=update_state)
@@ -131,13 +132,18 @@ class ClippingToggle(bpy.types.Operator):
 
             view = bpy.context.space_data
 
+            coords = ((context.region.width / 2) - (100 if self.state == 'MIN' else 0 if self.state == 'MED' else - 100), 100)
+
             if self.state == "MIN":
                 view.clip_start = self.minimum
+                bpy.ops.machin3.draw_label(text=f'Minimum: {round(self.minimum, 6)}', coords=coords, color=white)
 
             elif self.state == "MED":
                 view.clip_start = self.medium
+                bpy.ops.machin3.draw_label(text=f'Medium: {round(self.medium, 6)}', coords=coords, color=white)
 
             elif self.state == "MAX":
                 view.clip_start = self.maximum
+                bpy.ops.machin3.draw_label(text=f'Maximum: {round(self.maximum, 6)}', coords=coords, color=white)
 
         return {'FINISHED'}

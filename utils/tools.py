@@ -25,6 +25,10 @@ def get_tools_from_context(context):
     return tools
 
 
+def get_active_tool(context):
+    return view3d_tools.tool_active_from_context(context).idname
+
+
 def get_tool_options(context, tool_idname, operator_idname):
     for tooldef in context.workspace.tools:
         if tooldef and tooldef.idname == tool_idname:
